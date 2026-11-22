@@ -350,6 +350,9 @@ function findSingleStar(s, from) {
   return -1;
 }
 
+/** Any construct opener in an inline string. */
+const OPENER_RE = /[\\`*[]/;
+
 /**
  * `s` rendered inline; `env.link(target)` is a link's href. One scan
  * finds every character that matters — a construct opener or an HTML
@@ -360,6 +363,8 @@ function findSingleStar(s, from) {
  * precedes it).
  */
 function inline(s, env) {
+  // No construct opener anywhere: only HTML escaping is needed.
+  if (!OPENER_RE.test(s)) return escapeHtml(s);
   const out = [];
   // A fresh pattern per call: inline recurses, and a shared one would
   // lose its place.
@@ -775,16 +780,19 @@ function cardOf(s) {
   };
 }
 
-/** A page as its layout reads it. */
-function pageOf(s) {
-  const card = cardOf(s);
-  card.slug = s.slug;
-  card.content = s.html;
-  card.toc = s.toc.map((h) => ({ level: h.level, id: h.id, html: h.html }));
-  card.newer = linkOf(s.newer ?? null);
-  card.older = linkOf(s.older ?? null);
-  card.is_post = s.post;
-  return card;
+/** A page as its layout reads it: the post's card, where one was built, plus its own fields. */
+function pageOf(s, cards) {
+  const card = cards.get(s);
+  const base = card === undefined ? cardOf(s) : card;
+  return {
+    ...base,
+    slug: s.slug,
+    content: s.html,
+    toc: s.toc.map((h) => ({ level: h.level, id: h.id, html: h.html })),
+    newer: linkOf(s.newer ?? null),
+    older: linkOf(s.older ?? null),
+    is_post: s.post,
+  };
 }
 
 /** A tag as templates read it (its posts as cards). */
@@ -961,7 +969,7 @@ function build(input) {
     renderNodes(nodes, { vars: { site, tags: allTags, recent, ...vars }, parent: null }, ctx, 0, out);
     return out.join('');
   };
-  for (const s of sources) output[`${s.outDir}/index.html`] = render(s.layout, { page: pageOf(s) });
+  for (const s of sources) output[`${s.outDir}/index.html`] = render(s.layout, { page: pageOf(s, cards) });
   const per = input.site.per_page;
   const pages = Math.max(1, Math.ceil(posts.length / per));
   const indexUrl = (k) => (k === 1 ? `${base}/` : `${base}/page/${k}/`);
